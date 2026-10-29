@@ -20,6 +20,9 @@
   work without repeatedly asking for routine implementation choices.
 - Each stage design must state scope, inputs/outputs, component responsibilities,
   invariants, errors/limitations, acceptance criteria, and verification commands.
+- Whenever a design discussion is completed, save its explanation, examples,
+  decisions, and tradeoffs in a Markdown design document under `docs/` before
+  implementation. Keep an index in the README so the user can revisit discussions.
 - Keep changes small and explain how the implementation maps to SQL behavior.
 - Do not add transactions, concurrency, networking, permissions, or other deferred
   features without a scope decision. Do not claim crash safety in Phase 1.
@@ -28,6 +31,9 @@
 
 - Write idiomatic, readable Go with clear names, explicit errors, and small,
   cohesive functions and packages. Prefer simple designs over clever machinery.
+- Start every source and test file with a short comment, normally 4–5 lines,
+  explaining its purpose, how it works, and its role in plain language. Keep the
+  style consistent and update the explanation when the responsibility changes.
 - Apply SOLID principles in a Go-appropriate way:
   - Single responsibility: give components one clear responsibility and reason
     to change; keep shell I/O, parsing, validation, execution, and storage separate.

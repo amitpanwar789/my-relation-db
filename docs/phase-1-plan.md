@@ -1,6 +1,6 @@
 # Phase 1: Embedded Relational Database
 
-Status: agreed high-level plan; implementation has not started.
+Status: Stage 1 implemented and verified; Stages 2–8 remain planned.
 
 Date: 2026-10-29
 
@@ -201,5 +201,7 @@ infrastructure for later phases.
 
 ## Next discussion
 
-Stage 1: discuss SQL input, the tokenizer, parser, AST, and syntax errors; agree on
-a bounded grammar and acceptance tests before writing engine code.
+Stage 1's discussion and implementation are complete; see
+[the Stage 1 design](stage-1-sql-parsing-design.md). The next discussion is Stage 2:
+catalog, CREATE TABLE execution, name resolution, and semantic validation against
+in-memory schemas.
