@@ -68,133 +68,101 @@ decision.
 
 ## Stage sequence
 
-Stages build observable behavior incrementally. First establish working record
-storage and scans; add indexes only after a baseline exists for comparison.
-Detailed designs remain open until the corresponding stage discussion.
+Revised on 2026-10-29: the agreed learning and implementation order is top-down,
+starting with SQL. This supersedes the original storage-first sequence. Read
+[the SQL-to-storage walkthrough](sql-to-storage-overview.md) for the big picture.
 
-### Stage 1: Storage foundations
+Begin with in-memory schemas and rows, then add persistence beneath working SQL
+operations. In-memory execution is an intentional milestone, not a persistence
+promise. Design each stage before implementing it; detailed storage choices remain
+open until Stage 5. Every implementation stage includes unit and integration tests.
 
-Discuss and decide:
+### Stage 1: SQL input and parsing
 
-- Database file organization and file header.
-- Fixed-size pages, page identifiers, and page allocation.
-- Binary encoding, byte order, format identification, and version handling.
-- Basic file operations, flush/close semantics, and I/O errors.
+Design the shell's input boundaries, supported grammar, tokens, AST, identifiers,
+literals, and syntax errors. Build a shell, tokenizer, and parser. Statements can
+be inspected as structured representations; they do not execute yet. Define which
+syntax is introduced now and which syntax is added in later stages.
 
-Deliverable: a page-storage layer that can create a database, write pages, close
-it, reopen it, and read the same pages.
+Verification: unit tests for tokens and ASTs, whitespace and quoted strings,
+malformed/unsupported input, and useful error locations. Integration tests exercise
+SQL input through the shell to the parser and its displayed output/errors.
 
-Verification: page round trips across reopening, page boundaries, invalid page
-references, truncated files, and supported error paths. Record the chosen format
-and invariants.
+### Stage 2: Catalog and semantic analysis
 
-### Stage 2: Tables and records
+Design an in-memory schema catalog, table/column resolution, type rules, and
+semantic error reporting. Execute CREATE TABLE against the catalog and validate
+the other currently supported statements against it. Catalog execution is the
+first narrow execution path; general row execution follows in Stage 3.
 
-Discuss and decide:
+Verification: unit tests for catalog and validation rules; integration tests for
+CREATE TABLE followed by valid and invalid statements, duplicate definitions,
+unknown names, mismatched values, and NULL rules.
 
-- Persistent schema metadata and table discovery through a catalog.
-- Typed row encoding, NULL representation, and variable-length text.
-- Row identifiers and record placement inside pages.
-- Page capacity, record-size limits, and growth across multiple pages.
+### Stage 3: Basic execution in memory
 
-Deliverable: internal Go APIs to create tables, insert typed records, and scan
-tables, with schemas and data surviving reopening.
+Design simple plans, row values, insertion, table scans, projection, and query
+results. Keep the table access boundary small and driven by actual operations.
+Execute CREATE TABLE, INSERT, SELECT *, and selected-column SELECT in one session.
 
-Verification: multiple tables and pages, type round trips, empty and boundary-size
-text, NULL values, schema lookup after reopening, and invalid input handling.
+Verification: unit tests for plan/executor behavior; integration tests through the
+SQL pipeline for multiple tables, multiple inserts, projections, empty results,
+and errors. Rows do not survive closing the engine yet.
 
-### Stage 3: First SQL path
+### Stage 4: Expressions and mutations
 
-Discuss and decide:
+Design WHERE, comparisons, AND/OR precedence, parentheses, NULL semantics, UPDATE,
+and DELETE. Extend grammar and validation as needed. Execute basic SQL operations
+against the in-memory table implementation.
 
-- Tokenization, parsing, statement representation, and SQL grammar.
-- Identifier rules, literals, name resolution, and type validation.
-- A simple execution path and shell statement handling.
+Verification: expression unit tests and SQL integration tests for matching and
+nonmatching rows, NULL, precedence, full-table mutations, repeated changes, and
+unaffected rows. Specify and test the nontransactional mutation failure behavior.
 
-Deliverable: CREATE TABLE, INSERT, SELECT *, and selected-column SELECT through
-the SQL shell, backed by persistent storage.
+### Stage 5: Persistent storage design and implementation
 
-Verification: end-to-end SQL sessions, reopening, malformed SQL, unknown tables
-and columns, invalid values, and unsupported syntax.
+Explain storage requirements using the working SQL operations. Compare and decide
+file organization, pages and allocation, headers/versioning, byte order, row
+encoding, variable-length text, row identifiers, catalog persistence, free space,
+record growth/deletion, size limits, and flush/close/error behavior. Implement the
+storage dependencies in practical increments, then connect them beneath the engine.
+No earlier storage suggestion is binding without this design discussion.
 
-### Stage 4: Filtering and expressions
-
-Discuss and decide:
-
-- Column references, literals, and supported comparison operators.
-- AND/OR, expression precedence, and parentheses.
-- NULL semantics, including appropriate NULL predicates.
-- Predicate evaluation over table scans.
-
-Deliverable: single-table SELECT ... WHERE queries with documented expression
-behavior.
-
-Verification: expected result sets, operator precedence, NULL behavior, empty
-results, and expression/type errors.
-
-### Stage 5: Updates and deletes
-
-Discuss and decide:
-
-- UPDATE and DELETE syntax and predicate reuse.
-- Replacing records when text grows or shrinks.
-- Deleted slots, space reuse, and row-identifier stability.
-- Mutation errors under the documented nontransactional failure model.
-
-Deliverable: UPDATE and DELETE, with and without WHERE, whose successful changes
-survive clean shutdown and reopening.
-
-Verification: matching and nonmatching rows, full-table operations, repeated
-mutations, growing text, space reuse, and unchanged neighboring records.
+Verification: unit tests for encodings, pages, record boundaries, and error paths;
+integration tests for the SQL pipeline against disk storage, including clean
+shutdown/reopen, persistent schemas, multi-page tables, updates/deletes, and
+malformed/truncated files where supported. No crash recovery guarantee is added.
 
 ### Stage 6: Persistent indexes
 
-Discuss and decide:
+Design disk-backed B+ trees, key ordering/encoding, duplicate and NULL handling,
+indexed types/size limits, page splits/root changes, metadata, building indexes
+on existing data, deletion strategy, and maintenance during successful mutations.
+Implement CREATE INDEX and internal persistent index lookups.
 
-- Disk-backed B+ tree pages, key encoding, and ordering.
-- Duplicate keys, NULL handling, supported indexed types, and key-size limits.
-- Tree traversal, page splits, and root changes.
-- Index metadata and building an index over existing rows.
-- Maintenance during INSERT, UPDATE, and DELETE, including the deletion strategy.
+Verification: tree unit tests and integration tests for index creation, reopening,
+INSERT/UPDATE/DELETE maintenance, duplicate keys, multi-level splits, and lookup
+agreement with scans. Failed builds must not appear as usable indexes.
 
-Deliverable: CREATE INDEX for single-column indexes, persistent lookup through
-an internal API, and consistent index maintenance during successful mutations.
+### Stage 7: Index-aware planning
 
-Verification: duplicates, ordered/random insertion, multi-level splits, reopening,
-updates/deletes, and agreement between index lookups and table scans. Failed or
-interrupted index builds must not be presented as successfully usable indexes.
+Design rules for choosing scans versus supported index access, remaining predicate
+evaluation, and basic EXPLAIN output. Extend the simple planner introduced earlier;
+a sophisticated cost-based optimizer is deferred.
 
-### Stage 7: Choosing how queries run
-
-Discuss and decide:
-
-- A simple plan representation and rules for choosing an access method.
-- Predicates eligible for index use and remaining filter evaluation.
-- The initial supported lookup/range cases and fallback behavior.
-- Human-readable EXPLAIN output.
-
-Deliverable: SQL queries use suitable indexes where supported, fall back to scans
-otherwise, and expose the chosen access method through EXPLAIN.
-
-Verification: identical results for indexed and scan execution before and after
-mutations, including duplicate and NULL cases. Confirm actual index use through
-plans and targeted measurements; a sophisticated cost-based optimizer is deferred.
+Verification: planner unit tests and integration tests proving indexed and scan
+execution produce identical results before and after mutations, including duplicate
+and NULL cases. Check plans and targeted measurements to confirm actual index use.
 
 ### Stage 8: Release verification
 
-Discuss and complete:
+Complete broader end-to-end/randomized checks, malformed-file handling, SQL and
+file-format references, examples, known limitations, reproducible measurements,
+and a repeatable build/check process. Test throughout all stages; this stage
+broadens verification. Publication remains a separate decision.
 
-- Broader end-to-end and randomized verification.
-- Detection and clear reporting of malformed or unsupported files where feasible.
-- SQL reference, file-format documentation, usage examples, and known limits.
-- Reproducible performance measurements with stated data sizes and environments.
-- Formatting, static checks, automated tests, and a repeatable build process.
-
-Deliverable: a documented first release with demonstrated behavior and explicit
-failure guarantees. Publication is a later decision, not an automatic stage action.
-
-Verification: run the agreed checks from a clean checkout and execute the complete
-demonstration workflow below. Corruption detection does not imply recovery support.
+Verification: run documented checks from a clean checkout and the full completion
+demonstration below. Corruption detection does not imply recovery support.
 
 ## Working method for every stage
 
@@ -206,7 +174,7 @@ demonstration workflow below. Corruption detection does not imply recovery suppo
 6. Record the outcome before proceeding to the next stage.
 
 Stage design documents will live alongside this plan, for example
-`docs/stage-1-storage-design.md`. No detailed design is implied by an example
+`docs/stage-1-sql-parsing-design.md`. No detailed design is implied by an example
 filename. Maintain tests throughout implementation; stage 8 broadens verification
 rather than introducing it. Record scope changes explicitly.
 
@@ -233,5 +201,5 @@ infrastructure for later phases.
 
 ## Next discussion
 
-Stage 1: explain pages and compare database file organizations, then agree on the
-first storage design before writing engine code.
+Stage 1: discuss SQL input, the tokenizer, parser, AST, and syntax errors; agree on
+a bounded grammar and acceptance tests before writing engine code.
