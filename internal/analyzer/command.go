@@ -7,6 +7,7 @@ package analyzer
 
 import (
 	"github.com/amitpanwar789/my-relation-db/internal/catalog"
+	"github.com/amitpanwar789/my-relation-db/internal/expression"
 	"github.com/amitpanwar789/my-relation-db/internal/types"
 )
 
@@ -31,6 +32,7 @@ func (*Insert) bound()       {}
 func (*Insert) Kind() string { return "insert" }
 
 type Select struct {
+	Predicate *expression.Expr
 	Table     catalog.Table    `json:"table"`
 	Positions []int            `json:"positions"`
 	Columns   []catalog.Column `json:"columns"`
@@ -38,3 +40,25 @@ type Select struct {
 
 func (*Select) bound()       {}
 func (*Select) Kind() string { return "select" }
+
+type Assignment struct {
+	Position int
+	Value    types.Value
+}
+
+type Update struct {
+	Table       catalog.Table
+	Assignments []Assignment
+	Predicate   *expression.Expr
+}
+
+func (*Update) bound()       {}
+func (*Update) Kind() string { return "update" }
+
+type Delete struct {
+	Table     catalog.Table
+	Predicate *expression.Expr
+}
+
+func (*Delete) bound()       {}
+func (*Delete) Kind() string { return "delete" }

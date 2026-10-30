@@ -37,7 +37,7 @@ func TestSessionLifecycle(t *testing.T) {
 		t.Fatalf("empty query: %+v", empty.Query)
 	}
 	insert := process(t, &s, "INSERT INTO users (name, id) VALUES ('Amit', 42)")
-	if insert.Status != "inserted" || insert.AffectedRows != 1 {
+	if insert.Status != "inserted" || (insert.AffectedRows == nil || *insert.AffectedRows != 1) {
 		t.Fatalf("INSERT: %+v", insert)
 	}
 	process(t, &s, "INSERT INTO users (id, name, active) VALUES (43, '', FALSE)")

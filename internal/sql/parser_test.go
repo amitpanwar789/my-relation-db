@@ -63,10 +63,10 @@ func TestParseRejectsInvalidGrammar(t *testing.T) {
 		"INSERT INTO t (a) VALUES (1", "INSERT INTO t (a) VALUES (name)",
 		"INSERT INTO t (a) VALUES (1), (2)", "INSERT INTO t (a) VALUES (1.5)",
 		"SELECT", "SELECT FROM t", "SELECT id, FROM t", "SELECT *, id FROM t",
-		"SELECT id t", "SELECT id FROM", "SELECT id FROM t WHERE id = 1",
+		"SELECT id t", "SELECT id FROM", "SELECT id FROM t WHERE",
 		"SELECT id FROM t junk", "SELECT id FROM t; SELECT * FROM t;",
-		"SELECT id FROM t;;", "SELECT \"id\" FROM t", "UPDATE t SET a = 1;",
-		"DELETE FROM t;", "CREATE INDEX i ON t (a);", "SELECT * FROM t -- comment",
+		"SELECT id FROM t;;", "SELECT \"id\" FROM t", "UPDATE t SET a = ;",
+		"DELETE t;", "CREATE INDEX i ON t (a);", "SELECT * FROM t -- comment",
 	}
 	for _, input := range inputs {
 		t.Run(input, func(t *testing.T) {
@@ -90,6 +90,8 @@ func TestParseErrorLocation(t *testing.T) {
 func FuzzParse(f *testing.F) {
 	for _, seed := range []string{
 		"SELECT * FROM users;", "CREATE TABLE t (a INTEGER)",
+		"SELECT * FROM t WHERE (id >= 1 OR active IS NULL) AND TRUE",
+		"UPDATE t SET a = NULL WHERE id != 2", "DELETE FROM t WHERE NULL OR FALSE",
 		"INSERT INTO t (a) VALUES ('a;''b');", "SELECT FROM", "\xff", "'", "", ";;",
 	} {
 		f.Add(seed)

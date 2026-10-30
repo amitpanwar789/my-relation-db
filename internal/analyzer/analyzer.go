@@ -33,6 +33,10 @@ func Analyze(stmt sql.Statement, schemas SchemaLookup) (Command, error) {
 		command, err = analyzeInsert(s, schemas)
 	case *sql.SelectStatement:
 		command, err = analyzeSelect(s, schemas)
+	case *sql.UpdateStatement:
+		command, err = analyzeUpdate(s, schemas)
+	case *sql.DeleteStatement:
+		command, err = analyzeDelete(s, schemas)
 	default:
 		err = fmt.Errorf("unsupported statement %T", stmt)
 	}
@@ -117,6 +121,10 @@ func analyzeSelect(stmt *sql.SelectStatement, schemas SchemaLookup) (Command, er
 			command.Columns = append(command.Columns, table.Columns[position])
 		}
 	}
+	command.Predicate, err = analyzeWhere(stmt.Where, table)
+	if err != nil {
+		return nil, err
+	}
 	return command, nil
 }
 
@@ -138,4 +146,45 @@ func convertLiteral(literal sql.Literal, target types.Type) (types.Value, error)
 	default:
 		return types.Value{}, fmt.Errorf("expected %s, got %s literal", target, literal.Kind)
 	}
+}
+
+func analyzeUpdate(stmt *sql.UpdateStatement, schemas SchemaLookup) (Command, error) {
+	table, err := findTable(schemas, stmt.Table)
+	if err != nil {
+		return nil, err
+	}
+	command := &Update{Table: table}
+	seen := make(map[int]bool)
+	for _, assignment := range stmt.Assignments {
+		position, exists := table.ColumnIndex(assignment.Column)
+		if !exists {
+			return nil, fmt.Errorf("unknown column %q in table %q", assignment.Column, table.Name)
+		}
+		if seen[position] {
+			return nil, fmt.Errorf("duplicate SET column %q", assignment.Column)
+		}
+		seen[position] = true
+		value, err := convertLiteral(assignment.Value, table.Columns[position].Type)
+		if err != nil {
+			return nil, fmt.Errorf("table %q, column %q: %w", table.Name, assignment.Column, err)
+		}
+		command.Assignments = append(command.Assignments, Assignment{Position: position, Value: value})
+	}
+	command.Predicate, err = analyzeWhere(stmt.Where, table)
+	if err != nil {
+		return nil, err
+	}
+	return command, nil
+}
+
+func analyzeDelete(stmt *sql.DeleteStatement, schemas SchemaLookup) (Command, error) {
+	table, err := findTable(schemas, stmt.Table)
+	if err != nil {
+		return nil, err
+	}
+	predicate, err := analyzeWhere(stmt.Where, table)
+	if err != nil {
+		return nil, err
+	}
+	return &Delete{Table: table, Predicate: predicate}, nil
 }

@@ -1,6 +1,6 @@
 // This file turns validated commands into small descriptions of executable work.
-// Insert plans carry prepared rows; select plans describe a scan and projection.
-// Planning copies command slices and never reads or changes stored rows.
+// Plans describe insertion, filtered scans, and prepared update/delete operations.
+// Planning copies command slices and predicates without reading or changing rows.
 // Names and types are already resolved by analysis, so no schema checks repeat here.
 
 package planner
@@ -11,6 +11,7 @@ import (
 
 	"github.com/amitpanwar789/my-relation-db/internal/analyzer"
 	"github.com/amitpanwar789/my-relation-db/internal/catalog"
+	"github.com/amitpanwar789/my-relation-db/internal/expression"
 	"github.com/amitpanwar789/my-relation-db/internal/types"
 )
 
@@ -27,6 +28,7 @@ type TableScan struct{ Table string }
 
 // Select projects Positions from every row supplied by Scan.
 type Select struct {
+	Predicate *expression.Expr
 	Scan      TableScan
 	Positions []int
 	Columns   []catalog.Column
@@ -44,8 +46,28 @@ func Build(command analyzer.Command) (Plan, error) {
 			Scan:      TableScan{Table: command.Table.Name},
 			Positions: slices.Clone(command.Positions),
 			Columns:   slices.Clone(command.Columns),
+			Predicate: command.Predicate.Clone(),
 		}, nil
+	case *analyzer.Update:
+		return &Update{Table: command.Table.Name, Assignments: slices.Clone(command.Assignments), Predicate: command.Predicate.Clone()}, nil
+	case *analyzer.Delete:
+		return &Delete{Table: command.Table.Name, Predicate: command.Predicate.Clone()}, nil
 	default:
 		return nil, fmt.Errorf("cannot plan row command %T", command)
 	}
 }
+
+type Update struct {
+	Table       string
+	Assignments []analyzer.Assignment
+	Predicate   *expression.Expr
+}
+
+func (*Update) plan() {}
+
+type Delete struct {
+	Table     string
+	Predicate *expression.Expr
+}
+
+func (*Delete) plan() {}

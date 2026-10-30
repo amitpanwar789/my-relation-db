@@ -1,0 +1,16 @@
+CREATE TABLE users (id INTEGER, name TEXT, active BOOLEAN);
+INSERT INTO users (id, name, active) VALUES (1, 'Amit', TRUE);
+INSERT INTO users (id, name, active) VALUES (2, 'Neha', FALSE);
+INSERT INTO users (id, name) VALUES (3, 'Ravi');
+SELECT name FROM users WHERE id >= 2 AND active = FALSE;
+SELECT id, name FROM users WHERE active IS NULL;
+SELECT name FROM users WHERE (id = 1 OR id = 2) AND active IS NOT NULL;
+UPDATE users SET active = TRUE, name = 'Updated' WHERE id = 2;
+SELECT * FROM users WHERE active = TRUE;
+UPDATE users SET name = 'Nobody' WHERE id = 99;
+DELETE FROM users WHERE active IS NULL;
+SELECT * FROM users;
+DELETE FROM users WHERE FALSE;
+UPDATE users SET active = FALSE;
+DELETE FROM users;
+SELECT * FROM users WHERE TRUE;

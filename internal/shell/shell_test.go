@@ -104,7 +104,7 @@ func TestRecoveryAfterRejectedStatement(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := output.String()
-	if strings.Count(text, "error:") != 3 || strings.Count(text, `"kind": "select"`) != 1 {
+	if strings.Count(text, "\nerror:") != 3 || strings.Count(text, `"kind": "select"`) != 1 {
 		t.Fatalf("expected three errors followed by one query result, got:\n%s", text)
 	}
 	if !strings.Contains(text, "line 1, column 9") || !strings.Contains(text, "unexpected character") {

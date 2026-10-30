@@ -29,7 +29,7 @@ func TestExecutionAndProjectionOwnership(t *testing.T) {
 	}
 	insert := &planner.Insert{Table: "t", Row: []types.Value{types.IntegerValue(42), types.TextValue("Amit")}}
 	result, err := executor.Execute(insert, &store)
-	if err != nil || result.Kind != "insert" || result.Status != "inserted" || result.AffectedRows != 1 || result.Query != nil {
+	if err != nil || result.Kind != "insert" || result.Status != "inserted" || (result.AffectedRows == nil || *result.AffectedRows != 1) || result.Query != nil {
 		t.Fatalf("insert result: %+v, %v", result, err)
 	}
 	insert.Row[0] = types.IntegerValue(99)
@@ -49,6 +49,8 @@ func TestExecutionAndProjectionOwnership(t *testing.T) {
 var storeFailure = errors.New("store failed")
 
 type brokenStore struct{}
+
+func (brokenStore) Replace(string, [][]types.Value) error { return storeFailure }
 
 func (brokenStore) Append(string, []types.Value) error   { return storeFailure }
 func (brokenStore) Scan(string) ([][]types.Value, error) { return nil, storeFailure }

@@ -1,6 +1,6 @@
 # Phase 1: Embedded Relational Database
 
-Status: Stages 1–3 implemented and verified; Stages 4–8 remain planned.
+Status: Stages 1–4 implemented and verified; Stages 5–8 remain planned.
 
 Date: 2026-10-29
 
@@ -194,7 +194,6 @@ rather than introducing it. Record scope changes explicitly.
 ## Decisions intentionally left open
 
 Page size, file count, physical row layout, catalog layout, caching strategy,
-text comparison/collation,
 maximum row/key sizes, exact index deletion strategy, and detailed package
 boundaries will be decided during their stages. Avoid implementing speculative
 infrastructure for later phases.
@@ -204,9 +203,15 @@ infrastructure for later phases.
 Stages 1 and 2 are complete; see the [Stage 1 design](stage-1-sql-parsing-design.md)
 and [Stage 2 design](stage-2-catalog-semantic-design.md). Stage 3 execution is
 implemented and verified; see the
-[Stage 3 design](stage-3-in-memory-execution-design.md). The next
-discussion is Stage 4: WHERE expressions, NULL logic, UPDATE, and DELETE.
+[Stage 3 design](stage-3-in-memory-execution-design.md).
+Stage 4 is also implemented and verified; see the
+[Stage 4 design and edge cases](stage-4-expressions-mutations-design.md). The next
+discussion is Stage 5: persistent storage, file/page/record layout, and clean reopen.
 
 Stage 2 fixed signed 64-bit INTEGER values with overflow rejection, strict value
 types, nullable columns, omitted values becoming NULL, and schema-order remapping.
 Stage 1 fixed ASCII unquoted-name normalization and UTF-8 string handling.
+
+Stage 4 fixed case-sensitive text comparison using Go string byte order, SQL NULL
+logic, strict predicates, literal-only assignments, and prepared memory mutations.
+Locale-aware collation and Unicode normalization remain deferred.

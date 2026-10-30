@@ -1,6 +1,6 @@
 // This file holds rows in memory for one database session.
 // Rows are grouped by table name and kept as typed values in schema order.
-// Appends and scans copy slices so callers cannot change stored data indirectly.
+// Appends, scans, and replacements copy rows to protect owned table data.
 // Schemas live in the catalog; a missing row collection represents an empty table.
 
 package storage
@@ -31,4 +31,18 @@ func (m *Memory) Scan(table string) ([][]types.Value, error) {
 		rows[i] = slices.Clone(row)
 	}
 	return rows, nil
+}
+
+// Replace prepares an owned collection before publishing it in one map assignment.
+// This memory-only behavior is not a persistence or crash-recovery guarantee.
+func (m *Memory) Replace(table string, rows [][]types.Value) error {
+	owned := make([][]types.Value, len(rows))
+	for i, row := range rows {
+		owned[i] = slices.Clone(row)
+	}
+	if m.tables == nil {
+		m.tables = make(map[string][][]types.Value)
+	}
+	m.tables[table] = owned
+	return nil
 }

@@ -47,3 +47,31 @@ func TestMemorySnapshotsAndIsolation(t *testing.T) {
 		t.Fatal("independent store inherited data")
 	}
 }
+
+func TestMemoryReplacementOwnership(t *testing.T) {
+	var store storage.Memory
+	rows := [][]types.Value{{types.IntegerValue(1)}, {types.IntegerValue(1)}}
+	if err := store.Replace("t", rows); err != nil {
+		t.Fatal(err)
+	}
+	rows[0][0] = types.IntegerValue(9)
+	rows[1] = nil
+	got, err := store.Scan("t")
+	if err != nil || !reflect.DeepEqual(got, [][]types.Value{{types.IntegerValue(1)}, {types.IntegerValue(1)}}) {
+		t.Fatalf("replacement shares inputs: %v, %v", got, err)
+	}
+	if err := store.Replace("other", [][]types.Value{{types.IntegerValue(2)}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Replace("t", nil); err != nil {
+		t.Fatal(err)
+	}
+	empty, err := store.Scan("t")
+	if err != nil || empty == nil || len(empty) != 0 {
+		t.Fatal("replacement failed to clear table")
+	}
+	other, err := store.Scan("other")
+	if err != nil || other[0][0] != types.IntegerValue(2) {
+		t.Fatal("replacement changed another table")
+	}
+}

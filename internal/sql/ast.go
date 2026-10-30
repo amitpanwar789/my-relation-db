@@ -1,5 +1,5 @@
 // This file defines the structured descriptions produced by the parser.
-// Each statement type holds its table, columns, or literal values.
+// Statements hold table names, values, assignments, and optional conditions.
 // The analyzer reads these structures to check names and prepare typed commands.
 // These types describe commands without executing them or storing data.
 
@@ -60,10 +60,33 @@ func (*InsertStatement) statement()   {}
 func (*InsertStatement) Kind() string { return "insert" }
 
 type SelectStatement struct {
-	Table   string   `json:"table"`
-	All     bool     `json:"all"`
-	Columns []string `json:"columns,omitempty"`
+	Where   Expression `json:"where,omitempty"`
+	Table   string     `json:"table"`
+	All     bool       `json:"all"`
+	Columns []string   `json:"columns,omitempty"`
 }
 
 func (*SelectStatement) statement()   {}
 func (*SelectStatement) Kind() string { return "select" }
+
+type Assignment struct {
+	Column string
+	Value  Literal
+}
+
+type UpdateStatement struct {
+	Table       string
+	Assignments []Assignment
+	Where       Expression
+}
+
+func (*UpdateStatement) statement()   {}
+func (*UpdateStatement) Kind() string { return "update" }
+
+type DeleteStatement struct {
+	Table string
+	Where Expression
+}
+
+func (*DeleteStatement) statement()   {}
+func (*DeleteStatement) Kind() string { return "delete" }

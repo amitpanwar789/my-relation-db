@@ -1,103 +1,115 @@
-# Session Handoff: Stage 3 Implemented
+# Session Handoff: Stage 4 Implemented
 
 Updated: 2026-10-30
 
 ## Project and workflow
 
-Repository: github.com/amitpanwar789/my-relation-db. Local project directory:
-`/home/amit/Timepass Project/relational-db`.
+Repository: github.com/amitpanwar789/my-relation-db. Local directory:
+`/home/amit/Timepass Project/relational-db`. Module uses Go 1.25 and the standard
+library; core database behavior is implemented from scratch.
 
-Build a relational database from scratch in Go to understand its internals.
-Follow the top-down Phase 1 plan: SQL first, storage later. Read AGENTS.md,
-docs/progress.md, and the relevant design before work.
+Read AGENTS.md, progress.md, phase-1-plan.md, sql-to-storage-overview.md, and the
+current stage design before work. Build top-down from SQL. Workflow: explain
+concepts/options and a dedicated edge-case section -> discuss -> save agreed
+design -> implement -> unit/integration tests -> record results -> commit/push
+when requested. Each Go source/test file starts with 4–5 plain-language comment
+lines. Use idiomatic Go/SOLID without speculative abstractions. No proactive
+subagents. No Stage 5 implementation before its design discussion/agreement.
 
-For each stage: explain concepts/options and edge cases/handling -> discuss -> save agreed design under
-docs/ -> implement -> unit/integration tests -> record results. The user accepted
-Stage 3 and requested implementation. Stage 4 has not been discussed or authorized
-for implementation. Use clean idiomatic Go, SOLID without unnecessary abstractions,
-and 4–5 plain-language comment lines at the start of every source/test file.
-Commit/push when requested. No proactive subagents.
+## Checkpoint
 
-## Checkpoint and Git status
+- Stages 1–3 implemented, verified, committed, and pushed: ab1b12f, b9bfd34,
+  856f4bc respectively. main tracks origin/main.
+- Stage 4 implemented and verified; included in the Stage 4 checkpoint commit.
+- The user explicitly accepted literal-only SET, SQL NULL semantics, and preparing
+  all memory changes before applying them, then requested Stage 4 implementation.
 
-- Stage 1: implemented, tested, committed and pushed as ab1b12f.
-- Stage 2: implemented, verified, committed locally as b9bfd34; not pushed.
-- Stage 3: implemented and verified; included in the Stage 3 checkpoint commit.
-- Branch main tracks origin/main; the existing local Stage 2 commit is ahead of it.
+## Current behavior and limits
 
-## Current behavior
+- CREATE TABLE; explicit-column single-row INSERT; SELECT * or named/repeated
+  projections with optional WHERE; literal-only UPDATE; DELETE. Both mutations
+  allow WHERE or all-row behavior without it.
+- Types: strict int64 INTEGER (overflow rejected), UTF-8 TEXT, BOOLEAN. Every
+  column nullable; omitted INSERT fields become typed NULL in schema order.
+- Conditions: =, <>/!=, <, <=, >, >=; IS NULL / IS NOT NULL; AND/OR and parentheses.
+  BOOLEAN comparison only equality/inequality. Same-type column-to-column and
+  literal-to-column comparisons work. Bare BOOLEAN/TRUE/FALSE/NULL predicates work.
+  WHERE rejects other types. AND binds tighter than OR; comparisons bind tighter.
+- SQL three-valued logic: NULL comparisons yield unknown; only true matches WHERE.
+  All branches analyzed before runtime short-circuiting. TEXT uses case-sensitive
+  Go byte order without locale/normalization. Parentheses and tree depth each 256.
+- UPDATE counts matched rows even if values were unchanged; DELETE counts removed
+  rows. No matches succeeds with count zero. Duplicate SET targets are errors.
+- Mutations scan original rows, prepare replacements, then publish through Memory.
+  Preparation failures leave old memory rows intact. No transaction/crash guarantee.
+- Independent sessions own schemas/rows; results and plans own copied mutable data.
+  Exiting loses all state. No persistence/indexes/concurrency/server/permissions.
+- Deferred SQL includes arithmetic/column-copy SET, unary NOT, joins, aliases,
+  ORDER BY, LIKE/IN/BETWEEN, functions, RETURNING, comments, quoted identifiers.
 
-- SQL supports CREATE TABLE, explicit-column single-row INSERT, SELECT * and
-  named/repeated projections. No WHERE/UPDATE/DELETE yet.
-- INTEGER is signed int64 with overflow rejection. TEXT is UTF-8; BOOLEAN is
-  strict TRUE/FALSE. No implicit conversion between types.
-- All columns are nullable; omitted INSERT columns become typed NULL. NULL differs
-  from zero, false, and empty text. INSERT values are remapped to schema order.
-- Duplicate table definitions/CREATE columns/INSERT targets are rejected;
-  repeated SELECT columns are allowed. SELECT * follows schema order.
-- CREATE registers schema metadata. INSERT stores rows. SELECT scans and projects
-  them. Results are materialized copies; there is no SQL row-order guarantee.
-- Every session owns its catalog and memory rows. Exiting loses all state. There
-  are no database files, indexes, transactions, concurrency, server, or permissions.
+## Code navigation and ownership
 
-## Code navigation and contracts
-
-- internal/sql: tokenizer, recursive-descent parser, AST, syntax errors. Parsing
-  remains independent of table existence. SQL types alias internal/types.
-- internal/types/value.go: immutable typed values, concrete accessors, typed NULL,
-  exact int64 JSON output. Values have no mutable references.
-- internal/catalog: ordered Table/Column schemas, Define/Lookup/Register,
-  defensive copies, normalized lowercase names. Zero-value Catalog works.
-- internal/analyzer: Analyze returns bound CreateTable/Insert/Select commands.
-  Insert.Row is already typed/schema-ordered; Select.Positions/Columns are already
-  resolved. Analysis does not mutate state. Semantic errors keep their error type;
-  ASTs have no source spans, so no fabricated semantic source positions.
-- internal/planner: Build copies bound command slices into Insert or Select plans.
-  Select has TableScan plus positions/columns; no optimizer/operator framework.
-  CREATE remains the engine's existing catalog operation.
-- internal/storage: Memory owns map[string][][]types.Value. Append copies a row;
-  Scan returns an owned snapshot. Missing row collections mean empty tables;
-  table existence is checked by analysis against the catalog, not the row store.
-- internal/executor: RowStore interface contains Append/Scan with error returns.
-  Execute returns Result; INSERT acknowledges one affected row, SELECT returns
-  QueryResult with columns and projected rows. Errors wrap store causes with table
-  context. Invalid projection positions return errors. No I/O or presentation.
-- internal/engine: Session owns Catalog and Memory. Process parses then Apply
-  analyzes; CREATE registers, row commands are planned/executed. Result aliases
-  executor.Result. Independent sessions share no mutable state.
-- internal/shell: one Session per Run, semicolon-aware multiline framing and JSON.
-  Input completeness is checked before Apply, so incomplete commands cannot mutate
-  state. SQL errors print and execution continues; stream errors propagate.
-- cmd/db: stdin/stdout and interactive prompt setup. examples/stage-3.sql is the
-  current executable demonstration.
+- internal/sql: tokenizer, AST, parser. expression.go owns expression structures and
+  precedence parsing/depth checks. != normalizes to <> but retains original lexeme.
+  Parser remains independent of schemas; errors have source positions.
+- internal/types: immutable typed Value, int64 accessors, typed NULL, exact JSON.
+- internal/catalog: ordered schemas, normalized names, defensive copies. Schema
+  authority remains here; row-store collections do not establish table existence.
+- internal/analyzer: bound CreateTable/Insert/Select/Update/Delete. Prepared Insert
+  rows, Select positions/columns, resolved predicates, typed literal assignments.
+  expression.go checks all branches/types and gives bare NULL its contextual type.
+  Semantic errors preserve their type; ASTs lack semantic source spans.
+- internal/expression: private bound nodes, Eval/Matches, three-valued logic,
+  comparison without subtraction, and recursive Clone for ownership boundaries.
+- internal/planner: small row plans, copied assignment/projection slices and cloned
+  predicate trees. CREATE stays the session's catalog registration operation.
+- internal/storage: zero-value Memory, table-name to row collections. Append owns
+  input copies, Scan returns snapshots, Replace builds all owned copies before its
+  final map assignment. Absent row collection means an empty catalog-resolved table.
+- internal/executor: RowStore Append/Scan/Replace. SELECT filters original rows
+  before projection. mutation.go prepares updates/survivors and publishes only
+  after success; skips Replace for zero matches. Store failures retain causes and
+  table context. Future backend failure semantics must be revisited in Stage 5.
+- internal/engine: Session owns Catalog/Memory, Process parses, Apply analyzes then
+  handles CREATE or plans/executes row commands. Result aliases executor.Result.
+- internal/shell: one session per Run, JSON, semicolon-aware multiline framing.
+  Completeness checked before Apply, SQL errors print/continue, I/O failures return.
+- examples/stage-4.sql: current demonstration. scripts/verify_stage4.py: optional
+  Python SQLite verification oracle; never used by engine execution.
 
 ## JSON result contract
 
-Stage 2 validation dumps (command/prepared_row) have been replaced:
-
 - CREATE: kind create_table, status created-in-memory.
 - INSERT: kind insert, status inserted, affected_rows 1.
-- SELECT: kind select, status selected, query {columns, rows}. Columns have name
-  and type; values have type and value. Empty query rows are [] instead of null.
-- Non-query results omit query; zero affected_rows is omitted.
+- UPDATE/DELETE: kind update/delete, status updated/deleted, affected_rows count.
+- AffectedRows is *int: non-nil for mutations including zero, nil/omitted otherwise.
+- SELECT: kind select, status selected, query {columns, rows}. Columns have name/
+  type; values have type/value. Empty rows are [] rather than null. Nonqueries
+  omit query. Earlier command/prepared_row debugging output remains removed.
 
 ## Verification already passed
 
-- gofmt; go test ./... -cover: planner/executor/storage/shell/catalog/types 100%,
-  analyzer 94.5%, SQL 99.5%, engine 86.7%. cmd/db checked via real executable.
-- go vet ./...; go build ./...; build command to /tmp/relational-db-stage3.
-- Real subprocess smoke of all 11 examples/stage-3.sql commands: empty results,
-  five inserted rows across two tables, projections, exact min/max int64,
-  Unicode/quotes/semicolons, NULL and false.
-- Five real-process semantic failures left stored rows intact; later insertion
-  succeeded. New-process isolation and incomplete INSERT rejection passed.
-- No dependencies added. Go tools need build-cache access outside restricted
-  paths; use the approval mechanism if necessary.
+- gofmt, go test ./... -cover: SQL 99.7%, analyzer 96.3%, expression 94.4%, executor
+  94.5%, engine 86.7%; planner/storage/shell/catalog/types 100%. cmd/db uses real
+  executable checks instead of direct unit coverage.
+- go vet ./...; go build ./...; build /tmp/relational-db-stage4 from cmd/db.
+- python3 scripts/verify_stage4.py /tmp/relational-db-stage4: 16 Stage 4 example
+  commands, 11 Stage 3 regression commands, and 341 deterministic SQL commands
+  agree with SQLite (208 result multiset comparisons; 132 affected counts).
+- Parser fuzz: go test ./internal/sql -run '^$' -fuzz '^FuzzParse$' -fuzztime=5s
+  -parallel=2: 268,556 generated inputs, no failure.
+- Tests cover all truth-table pairs, limits, precedence, NULL, strict analysis,
+  unchanged rows after errors, duplicates/adjacent/all-row mutations, zero counts,
+  original-row predicates, copy ownership, failing scan/evaluation/assignment/
+  replace, incomplete shell commands, and independent tables/sessions.
+- Go checks need build-cache access outside restricted paths; use normal approval
+  if required. The optional Python check uses standard-library sqlite3 only.
 
-## Next discussion
+## Next
 
-Review Stage 3 behavior with the user, then explain/design Stage 4 before coding:
-WHERE expressions, comparison operators, AND/OR precedence, parentheses, SQL NULL
-logic, UPDATE and DELETE, and explicit nontransactional mutation failure behavior.
-Later stages: 5 persistence, 6 indexes, 7 index-aware plans/EXPLAIN, 8 release checks.
-Read docs/stage-3-in-memory-execution-design.md for the completed design/results.
+Review Stage 4 and commit/push when requested. Explain and agree Stage 5 before
+coding: persistent schemas/records, file/page layout, row IDs, allocation, variable
+text, update/delete storage, size bounds, byte order/versioning, flush/close,
+malformed-file errors, and clean close/reopen. Include edge cases and handling.
+No existing file-format suggestion is binding. Persistence still targets clean
+shutdown/reopen only; WAL/recovery/transactions are deferred.

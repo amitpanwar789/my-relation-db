@@ -8,8 +8,10 @@ package sql
 import "fmt"
 
 type parser struct {
-	tokens []Token
-	index  int
+	tokens  []Token
+	index   int
+	nesting int
+	depths  map[Expression]int
 }
 
 // Parse accepts exactly one statement, optionally terminated with a semicolon.
@@ -28,8 +30,12 @@ func Parse(input string) (Statement, error) {
 		stmt, err = p.insert()
 	case Select:
 		stmt, err = p.selectStatement()
+	case Update:
+		stmt, err = p.updateStatement()
+	case Delete:
+		stmt, err = p.deleteStatement()
 	default:
-		err = p.expected("CREATE, INSERT, or SELECT")
+		err = p.expected("CREATE, INSERT, SELECT, UPDATE, or DELETE")
 	}
 	if err != nil {
 		return nil, err
@@ -142,7 +148,8 @@ func (p *parser) selectStatement() (Statement, error) {
 		return nil, err
 	}
 	stmt.Table = name.Value
-	return stmt, nil
+	stmt.Where, err = p.whereClause()
+	return stmt, err
 }
 
 func (p *parser) nameList() ([]string, error) {
@@ -205,4 +212,49 @@ func (p *parser) expected(description string) error {
 		found = string(EOF)
 	}
 	return &SyntaxError{token.Pos, fmt.Sprintf("expected %s, found %s", description, found)}
+}
+
+func (p *parser) updateStatement() (Statement, error) {
+	p.match(Update)
+	name, err := p.expect(Identifier)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(Set); err != nil {
+		return nil, err
+	}
+	stmt := &UpdateStatement{Table: name.Value}
+	for {
+		column, err := p.expect(Identifier)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := p.expect(Equal); err != nil {
+			return nil, err
+		}
+		value, err := p.literal()
+		if err != nil {
+			return nil, err
+		}
+		stmt.Assignments = append(stmt.Assignments, Assignment{Column: column.Value, Value: value})
+		if !p.match(Comma) {
+			break
+		}
+	}
+	stmt.Where, err = p.whereClause()
+	return stmt, err
+}
+
+func (p *parser) deleteStatement() (Statement, error) {
+	p.match(Delete)
+	if _, err := p.expect(From); err != nil {
+		return nil, err
+	}
+	name, err := p.expect(Identifier)
+	if err != nil {
+		return nil, err
+	}
+	stmt := &DeleteStatement{Table: name.Value}
+	stmt.Where, err = p.whereClause()
+	return stmt, err
 }

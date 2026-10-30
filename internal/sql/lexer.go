@@ -16,6 +16,8 @@ var keywords = map[string]TokenKind{
 	"VALUES": Values, "SELECT": Select, "FROM": From,
 	"INTEGER": IntegerType, "TEXT": TextType, "BOOLEAN": BooleanType,
 	"TRUE": True, "FALSE": False, "NULL": Null,
+	"WHERE": Where, "UPDATE": Update, "SET": Set, "DELETE": Delete,
+	"AND": And, "OR": Or, "IS": Is, "NOT": Not,
 }
 
 type lexer struct {
@@ -83,6 +85,24 @@ func (l *lexer) next() (Token, error) {
 	}
 	if c == '\'' {
 		return l.stringToken(start)
+	}
+	if strings.ContainsRune("=<>!", rune(c)) {
+		l.advance()
+		if l.pos.Offset < len(l.input) {
+			next := l.input[l.pos.Offset]
+			if next == '=' && c != '=' || c == '<' && next == '>' {
+				l.advance()
+			}
+		}
+		spelling := l.input[start.Offset:l.pos.Offset]
+		if spelling == "!" {
+			return Token{}, &SyntaxError{start, "expected = after !"}
+		}
+		kind := TokenKind(spelling)
+		if spelling == "!=" {
+			kind = NotEqual
+		}
+		return l.token(kind, start, string(kind)), nil
 	}
 	kind := TokenKind(string(c))
 	switch kind {
