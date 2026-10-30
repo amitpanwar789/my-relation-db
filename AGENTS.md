@@ -3,6 +3,10 @@
 ## Read before implementation
 
 - Read `docs/phase-1-plan.md` for the current scope and stage order.
+- Read `docs/progress.md` for current design/implementation status and the next
+  action. Keep it current as stages move through discussion and implementation.
+- When resuming after a context reset, read `docs/session-handoff.md` for the saved
+  checkpoint, implemented contracts, verification evidence, and next discussion.
 - Read `docs/sql-to-storage-overview.md` for the conceptual architecture and
   top-down learning approach.
 - Read the current stage's design document, when present. Detailed designs belong

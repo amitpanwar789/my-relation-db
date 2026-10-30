@@ -1,9 +1,11 @@
 // This file defines the structured descriptions produced by the parser.
 // Each statement type holds its table, columns, or literal values.
-// The shell displays these structures as JSON so we can inspect the meaning.
+// The analyzer reads these structures to check names and prepare typed commands.
 // These types describe commands without executing them or storing data.
 
 package sql
+
+import "github.com/amitpanwar789/my-relation-db/internal/types"
 
 // Statement is a parsed command, not an executed operation.
 type Statement interface {
@@ -11,12 +13,12 @@ type Statement interface {
 	Kind() string
 }
 
-type DataType string
+type DataType = types.Type
 
 const (
-	TypeInteger DataType = "INTEGER"
-	TypeText    DataType = "TEXT"
-	TypeBoolean DataType = "BOOLEAN"
+	TypeInteger = types.Integer
+	TypeText    = types.Text
+	TypeBoolean = types.Boolean
 )
 
 type ColumnDefinition struct {

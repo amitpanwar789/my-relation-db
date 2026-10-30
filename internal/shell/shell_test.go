@@ -1,5 +1,5 @@
 // This file tests the complete input-to-output path of the SQL shell.
-// It supplies text streams and checks parsed JSON, prompts, and errors.
+// It supplies text streams and checks session results, prompts, and errors.
 // It covers multiline input, quoted semicolons, recovery, and unfinished SQL.
 // Failing streams verify that input and output errors reach the caller.
 
@@ -13,13 +13,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/amitpanwar789/my-relation-db/internal/catalog"
 	"github.com/amitpanwar789/my-relation-db/internal/shell"
-	"github.com/amitpanwar789/my-relation-db/internal/sql"
 )
 
 type result struct {
-	Kind      string          `json:"kind"`
-	Statement json.RawMessage `json:"statement"`
+	Kind    string          `json:"kind"`
+	Status  string          `json:"status"`
+	Command json.RawMessage `json:"command"`
 }
 
 func TestSQLSession(t *testing.T) {
@@ -29,8 +30,8 @@ CREATE TABLE Users (
   name TEXT,
   active BOOLEAN
 );
-INSERT INTO Users (id, name, active) VALUES (9999999999999999999999999, 'O''Brien; नमस्ते', TRUE);
-SELECT id, name FROM Users; SELECT * FROM unknown;
+INSERT INTO Users (id, name, active) VALUES (9223372036854775807, 'O''Brien; नमस्ते', TRUE);
+SELECT id, name FROM Users; SELECT * FROM users;
 ; ;
 `
 	var output bytes.Buffer
@@ -59,18 +60,45 @@ SELECT id, name FROM Users; SELECT * FROM unknown;
 			t.Errorf("result %d kind = %q; want %q", i, results[i].Kind, kind)
 		}
 	}
-	var inserted sql.InsertStatement
-	if err := json.Unmarshal(results[1].Statement, &inserted); err != nil {
+	if results[0].Status != "created-in-memory" {
+		t.Fatalf("CREATE did not report registration: %+v", results[0])
+	}
+	for _, result := range results[1:] {
+		if result.Status != "validated-only" {
+			t.Fatalf("row operation claimed execution: %+v", result)
+		}
+	}
+	var inserted struct {
+		Row []struct {
+			Type  string          `json:"type"`
+			Value json.RawMessage `json:"value"`
+		} `json:"prepared_row"`
+	}
+	if err := json.Unmarshal(results[1].Command, &inserted); err != nil {
 		t.Fatal(err)
 	}
-	if inserted.Values[0].Value != "9999999999999999999999999" || inserted.Values[1].Value != "O'Brien; नमस्ते" {
-		t.Fatalf("literal contents changed: %+v", inserted.Values)
+	var name string
+	if err := json.Unmarshal(inserted.Row[1].Value, &name); err != nil {
+		t.Fatal(err)
+	}
+	if string(inserted.Row[0].Value) != "9223372036854775807" || name != "O'Brien; नमस्ते" {
+		t.Fatalf("typed contents changed: %+v", inserted.Row)
+	}
+	var selected struct {
+		Columns   []catalog.Column `json:"columns"`
+		Positions []int            `json:"positions"`
+	}
+	if err := json.Unmarshal(results[2].Command, &selected); err != nil {
+		t.Fatal(err)
+	}
+	if len(selected.Columns) != 2 || selected.Columns[1].Name != "name" || selected.Positions[1] != 1 {
+		t.Fatalf("unexpected bound projection: %+v", selected)
 	}
 }
 
 func TestRecoveryAfterRejectedStatement(t *testing.T) {
 	var output bytes.Buffer
-	input := "SELECT FROM t; SELECT @ FROM t; SELECT * FROM t WHERE a; SELECT * FROM t;"
+	input := "CREATE TABLE t (a TEXT); SELECT FROM t; SELECT @ FROM t; SELECT * FROM t WHERE a; SELECT * FROM t;"
 	if err := shell.Run(strings.NewReader(input), &output, false); err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +106,7 @@ func TestRecoveryAfterRejectedStatement(t *testing.T) {
 	if strings.Count(text, "error:") != 3 || strings.Count(text, `"kind": "select"`) != 1 {
 		t.Fatalf("expected three errors followed by one AST, got:\n%s", text)
 	}
-	if !strings.Contains(text, "line 1, column 8") || !strings.Contains(text, "unexpected character") {
+	if !strings.Contains(text, "line 1, column 9") || !strings.Contains(text, "unexpected character") {
 		t.Fatalf("missing positioned diagnostics: %s", text)
 	}
 }
@@ -105,7 +133,7 @@ func TestQuoteFraming(t *testing.T) {
 	for _, value := range []string{"''", "''''", "'a;'';b'", "'a\nb'", "'\\'", "'é;🙂'"} {
 		t.Run(value, func(t *testing.T) {
 			var output bytes.Buffer
-			input := "INSERT INTO t (a) VALUES (" + value + ");SELECT * FROM t;"
+			input := "CREATE TABLE t (a TEXT); INSERT INTO t (a) VALUES (" + value + ");SELECT * FROM t;"
 			if err := shell.Run(strings.NewReader(input), &output, false); err != nil {
 				t.Fatal(err)
 			}
@@ -127,7 +155,7 @@ func TestEmptyInputAndStatements(t *testing.T) {
 
 func TestInteractivePrompts(t *testing.T) {
 	var output bytes.Buffer
-	if err := shell.Run(strings.NewReader("SELECT name\nFROM t;\n"), &output, true); err != nil {
+	if err := shell.Run(strings.NewReader("CREATE TABLE t (\nname TEXT);\n"), &output, true); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.HasPrefix(output.String(), "db>  -> ") || !strings.HasSuffix(output.String(), "db> ") {
@@ -155,7 +183,7 @@ func TestStreamFailures(t *testing.T) {
 	}{
 		{"input", brokenReader{streamFailure}, io.Discard, false, streamFailure},
 		{"unexpected EOF from device", brokenReader{io.ErrUnexpectedEOF}, io.Discard, false, io.ErrUnexpectedEOF},
-		{"AST output", strings.NewReader("SELECT * FROM t;"), brokenWriter{}, false, streamFailure},
+		{"result output", strings.NewReader("CREATE TABLE t (a TEXT);"), brokenWriter{}, false, streamFailure},
 		{"error output", strings.NewReader("SELECT;"), brokenWriter{}, false, streamFailure},
 		{"prompt output", strings.NewReader(""), brokenWriter{}, true, streamFailure},
 	} {
@@ -182,5 +210,43 @@ func TestContinuationPromptFailure(t *testing.T) {
 	err := shell.Run(strings.NewReader("SELECT\n"), &promptThenFailWriter{}, true)
 	if !errors.Is(err, streamFailure) {
 		t.Fatalf("continuation output failure was swallowed: %v", err)
+	}
+}
+
+func TestSemanticRecoveryAndSessionLifetime(t *testing.T) {
+	var output bytes.Buffer
+	input := `CREATE TABLE t (a INTEGER, a TEXT);
+CREATE TABLE t (a INTEGER, name TEXT, active BOOLEAN);
+INSERT INTO t (a) VALUES ('wrong');
+SELECT missing FROM t;
+CREATE TABLE t (other BOOLEAN);
+INSERT INTO t (name, a) VALUES ('Amit', 42);
+SELECT a FROM t;`
+	if err := shell.Run(strings.NewReader(input), &output, false); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	if strings.Count(text, "semantic error:") != 4 || strings.Count(text, "created-in-memory") != 1 || strings.Count(text, "validated-only") != 2 {
+		t.Fatalf("unexpected semantic recovery: %s", text)
+	}
+	if !strings.Contains(text, `"value": null`) || strings.Contains(text, `"rows"`) {
+		t.Fatalf("missing NULL or fabricated row output: %s", text)
+	}
+	output.Reset()
+	if err := shell.Run(strings.NewReader("SELECT a FROM t;"), &output, false); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "unknown table") {
+		t.Fatal("new shell run retained previous session state")
+	}
+}
+
+func TestIncompleteCreateDoesNotApply(t *testing.T) {
+	var output bytes.Buffer
+	if err := shell.Run(strings.NewReader("CREATE TABLE t (a TEXT)"), &output, false); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(output.String(), "created-in-memory") || !strings.Contains(output.String(), "expected ;") {
+		t.Fatalf("incomplete CREATE was applied: %s", output.String())
 	}
 }

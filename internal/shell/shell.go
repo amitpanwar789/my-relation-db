@@ -1,9 +1,9 @@
-// This file connects statement input, SQL parsing, and displayed results.
-// It repeatedly reads a statement and prints its parsed structure as JSON.
+// This file connects SQL input to a session and displays its results.
+// It parses complete statements before checking their meaning against schemas.
 // It reports SQL errors and continues, while returning stream failures.
 // Its input and output are replaceable streams so it can be tested easily.
 
-// Package shell connects SQL input to AST inspection. It executes no SQL.
+// Package shell connects SQL streams to session metadata and validation.
 package shell
 
 import (
@@ -14,12 +14,14 @@ import (
 	"io"
 	"strings"
 
+	"github.com/amitpanwar789/my-relation-db/internal/engine"
 	"github.com/amitpanwar789/my-relation-db/internal/sql"
 )
 
 // Run reports statement errors and continues. Stream failures are returned to the
-// caller. Interactive mode adds prompts; batch output contains only ASTs/errors.
+// caller. Interactive mode adds prompts; batch output contains results/errors.
 func Run(input io.Reader, output io.Writer, interactive bool) error {
+	session := &engine.Session{}
 	source := statementInput{reader: bufio.NewReader(input)}
 	if interactive {
 		source.newline = func() error {
@@ -45,22 +47,22 @@ func Run(input io.Reader, output io.Writer, interactive bool) error {
 		if strings.TrimSpace(text) == ";" {
 			continue
 		}
-		stmt, parseErr := sql.Parse(text)
-		if parseErr == nil && errors.Is(readErr, errIncompleteStatement) {
+		stmt, statementErr := sql.Parse(text)
+		if statementErr == nil && errors.Is(readErr, errIncompleteStatement) {
 			tokens, _ := sql.Tokenize(text) // Parse succeeded, so tokenization cannot fail.
-			parseErr = &sql.SyntaxError{Pos: tokens[len(tokens)-1].Pos, Message: "expected ; before end of input"}
+			statementErr = &sql.SyntaxError{Pos: tokens[len(tokens)-1].Pos, Message: "expected ; before end of input"}
 		}
-		if parseErr != nil {
-			if _, err := fmt.Fprintf(output, "error: %v\n", parseErr); err != nil {
+		var result engine.Result
+		if statementErr == nil {
+			result, statementErr = session.Apply(stmt)
+		}
+		if statementErr != nil {
+			if _, err := fmt.Fprintf(output, "error: %v\n", statementErr); err != nil {
 				return fmt.Errorf("write SQL error: %w", err)
 			}
 		} else {
-			result := struct {
-				Kind      string        `json:"kind"`
-				Statement sql.Statement `json:"statement"`
-			}{Kind: stmt.Kind(), Statement: stmt}
 			if err := encoder.Encode(result); err != nil {
-				return fmt.Errorf("write parsed statement: %w", err)
+				return fmt.Errorf("write session result: %w", err)
 			}
 		}
 		if errors.Is(readErr, errIncompleteStatement) {

@@ -1,7 +1,7 @@
 // This file starts the SQL command-line application.
 // It connects keyboard input and terminal output to the shell.
 // It enables prompts for interactive input and reports input/output failures.
-// The shell currently shows parsed commands; it does not execute SQL.
+// The shell creates in-memory schemas and validates queries without storing rows.
 
 package main
 

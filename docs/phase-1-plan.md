@@ -1,6 +1,6 @@
 # Phase 1: Embedded Relational Database
 
-Status: Stage 1 implemented and verified; Stages 2–8 remain planned.
+Status: Stages 1–2 implemented and verified; Stages 3–8 remain planned.
 
 Date: 2026-10-29
 
@@ -194,14 +194,18 @@ rather than introducing it. Record scope changes explicitly.
 ## Decisions intentionally left open
 
 Page size, file count, physical row layout, catalog layout, caching strategy,
-integer width/overflow behavior, text encoding and comparison, identifier casing,
+text comparison/collation,
 maximum row/key sizes, exact index deletion strategy, and detailed package
 boundaries will be decided during their stages. Avoid implementing speculative
 infrastructure for later phases.
 
 ## Next discussion
 
-Stage 1's discussion and implementation are complete; see
-[the Stage 1 design](stage-1-sql-parsing-design.md). The next discussion is Stage 2:
-catalog, CREATE TABLE execution, name resolution, and semantic validation against
-in-memory schemas.
+Stages 1 and 2 are complete; see the [Stage 1 design](stage-1-sql-parsing-design.md)
+and [Stage 2 design](stage-2-catalog-semantic-design.md). The next discussion is
+Stage 3: plans and execution for INSERT/SELECT using in-memory rows. Review the
+existing Stage 3 draft against Stage 2's implemented contracts before coding.
+
+Stage 2 fixed signed 64-bit INTEGER values with overflow rejection, strict value
+types, nullable columns, omitted values becoming NULL, and schema-order remapping.
+Stage 1 fixed ASCII unquoted-name normalization and UTF-8 string handling.
