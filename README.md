@@ -4,9 +4,9 @@ A relational database engine built from scratch in Go to understand storage,
 indexes, and SQL execution through a carefully tested implementation.
 
 The first phase targets an embedded engine with a SQL shell, persistent tables,
-single-table queries, and indexes. Stages 1 and 2 are implemented: the shell parses
-SQL, creates table schemas in memory, and validates INSERT/SELECT against those
-schemas. It does not store rows, retrieve query results, or access database files yet.
+single-table queries, and indexes. Stages 1–3 are implemented: the shell parses
+and validates SQL, creates tables, inserts rows, and returns query results in
+memory. There are no database files yet; exiting loses all tables and rows.
 
 Start with the [SQL-to-storage walkthrough](docs/sql-to-storage-overview.md), then
 read the [Phase 1 high-level plan](docs/phase-1-plan.md). We build from SQL downward,
@@ -17,7 +17,7 @@ be discussed and recorded before their implementation.
 Go code, SOLID principles, and unit and integration tests in every implementation
 stage.
 
-## Run the current engine (Stage 2)
+## Run the current engine (Stage 3)
 
 Requires Go 1.25 or later. No third-party dependencies are used.
 
@@ -29,7 +29,7 @@ Enter a statement ending in a semicolon. Multiline input is supported; EOF
 (Ctrl-D on an empty terminal line) exits. Piped input omits prompts:
 
 ```sh
-go run ./cmd/db < examples/stage-2.sql
+go run ./cmd/db < examples/stage-3.sql
 ```
 
 Supported forms:
@@ -51,21 +51,28 @@ All columns are nullable; omitted INSERT columns receive NULL. Reordered INSERT
 columns are mapped into schema order. Repeated SELECT columns are allowed, and
 SELECT * follows schema order.
 
-CREATE TABLE reports `created-in-memory`. INSERT and SELECT report `validated-only`
-and display the resolved command, not stored data or query rows. For example:
+CREATE TABLE reports `created-in-memory`. INSERT reports `inserted` with
+`affected_rows: 1`. SELECT reports `selected` with a `query` object containing
+`columns` (names/types) and `rows` (typed values). For example:
 
 ```sql
 CREATE TABLE users (id INTEGER, name TEXT, active BOOLEAN);
 INSERT INTO users (name, id) VALUES ('Amit', 42);
+SELECT name, id FROM users;
 ```
 
-The second command shows prepared values [42, 'Amit', NULL] in table column order,
-but does not insert them. Each shell run has its own catalog; exiting loses schemas.
+The INSERT stores [42, 'Amit', NULL] in table column order. The SELECT returns
+['Amit', 42]. Each value is encoded as `{"type":"TEXT","value":"Amit"}` or
+its INTEGER/BOOLEAN equivalent; NULL uses a JSON null value with the column's type.
+An empty SELECT includes its columns and `rows: []`. Query results are collected
+in memory and copied so callers cannot change stored rows through returned slices.
+All queries currently scan the table. SQL row order is unspecified without ORDER BY,
+which is not supported yet. Each shell run has its own catalog and row store.
 The parser remains independently testable and still accepts unknown names; the
 session's semantic analyzer is responsible for rejecting them.
 
 WHERE, UPDATE/DELETE, indexes, comments, quoted identifiers, constraints, joins,
-and row execution are not implemented. Syntax errors include line/column positions;
+and persistence are not implemented. Syntax errors include line/column positions;
 semantic errors identify affected names/types. The shell continues with the next
 statement. An unmatched quote consumes the
 remaining input. Nonblank SQL at EOF without a semicolon is reported as incomplete.
@@ -80,9 +87,10 @@ go build ./...
 go test ./internal/sql -run '^$' -fuzz '^FuzzParse$' -fuzztime=5s -parallel=2
 ```
 
-Unit tests cover tokenization, ASTs, typed values, schema ownership, and semantic
-validation. Session and shell integration tests cover catalog lifetime, invalid
-commands, input-to-result output, multiline/quoted input, recovery, and stream errors.
+Unit tests cover tokenization, ASTs, typed values, schemas, semantic validation,
+plans, execution, and row-store ownership. Session and shell integration tests
+cover actual rows/projections, table/session isolation, invalid commands leaving
+rows intact, typed boundaries/NULL, multiline/quoted input, recovery, and stream errors.
 
 ## Design discussions
 
@@ -91,6 +99,5 @@ commands, input-to-result output, multiline/quoted input, recovery, and stream e
 - [Stage 1 design, examples, and verification](docs/stage-1-sql-parsing-design.md)
 - [Stage 2 design and verification: catalog and semantic analysis](docs/stage-2-catalog-semantic-design.md)
 - [Current progress and next action](docs/progress.md)
-- [Session handoff for resuming at Stage 3](docs/session-handoff.md)
-- [Stage 3 proposed design: execution in memory](docs/stage-3-in-memory-execution-design.md)
-  (discussion draft; reconcile with the implemented Stage 2 before Stage 3 coding)
+- [Session handoff and current checkpoint](docs/session-handoff.md)
+- [Stage 3 design and verification: execution in memory](docs/stage-3-in-memory-execution-design.md)

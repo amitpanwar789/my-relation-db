@@ -24,6 +24,10 @@
   work without repeatedly asking for routine implementation choices.
 - Each stage design must state scope, inputs/outputs, component responsibilities,
   invariants, errors/limitations, acceptance criteria, and verification commands.
+- Include a dedicated edge-cases section in every stage explanation and design
+  discussion. Explain what can go wrong, give concrete examples, state the
+  proposed handling, and connect important cases to verification. Mark proposed
+  behavior clearly until agreed and implemented.
 - Whenever a design discussion is completed, save its explanation, examples,
   decisions, and tradeoffs in a Markdown design document under `docs/` before
   implementation. Keep an index in the README so the user can revisit discussions.

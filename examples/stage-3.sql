@@ -1,0 +1,11 @@
+CREATE TABLE users (id INTEGER, name TEXT, active BOOLEAN);
+SELECT * FROM users;
+INSERT INTO users (name, id) VALUES ('Amit', 42);
+INSERT INTO users (id, name, active) VALUES (43, 'Neha', FALSE);
+INSERT INTO users (id, name, active) VALUES (9223372036854775807, 'O''Brien; नमस्ते', TRUE);
+INSERT INTO users (id, name, active) VALUES (-9223372036854775808, '', NULL);
+SELECT * FROM users;
+SELECT name, id, name FROM users;
+CREATE TABLE flags (enabled BOOLEAN);
+INSERT INTO flags (enabled) VALUES (FALSE);
+SELECT * FROM flags;

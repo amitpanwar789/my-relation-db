@@ -1,9 +1,9 @@
 // This file connects SQL input to a session and displays its results.
-// It parses complete statements before checking their meaning against schemas.
+// It parses complete statements before validating and executing them in memory.
 // It reports SQL errors and continues, while returning stream failures.
 // Its input and output are replaceable streams so it can be tested easily.
 
-// Package shell connects SQL streams to session metadata and validation.
+// Package shell connects SQL streams to session execution and JSON results.
 package shell
 
 import (

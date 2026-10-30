@@ -1,6 +1,6 @@
 # Phase 1: Embedded Relational Database
 
-Status: Stages 1–2 implemented and verified; Stages 3–8 remain planned.
+Status: Stages 1–3 implemented and verified; Stages 4–8 remain planned.
 
 Date: 2026-10-29
 
@@ -202,9 +202,10 @@ infrastructure for later phases.
 ## Next discussion
 
 Stages 1 and 2 are complete; see the [Stage 1 design](stage-1-sql-parsing-design.md)
-and [Stage 2 design](stage-2-catalog-semantic-design.md). The next discussion is
-Stage 3: plans and execution for INSERT/SELECT using in-memory rows. Review the
-existing Stage 3 draft against Stage 2's implemented contracts before coding.
+and [Stage 2 design](stage-2-catalog-semantic-design.md). Stage 3 execution is
+implemented and verified; see the
+[Stage 3 design](stage-3-in-memory-execution-design.md). The next
+discussion is Stage 4: WHERE expressions, NULL logic, UPDATE, and DELETE.
 
 Stage 2 fixed signed 64-bit INTEGER values with overflow rejection, strict value
 types, nullable columns, omitted values becoming NULL, and schema-order remapping.

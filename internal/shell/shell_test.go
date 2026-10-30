@@ -17,10 +17,19 @@ import (
 	"github.com/amitpanwar789/my-relation-db/internal/shell"
 )
 
+type jsonValue struct {
+	Type  string          `json:"type"`
+	Value json.RawMessage `json:"value"`
+}
+
 type result struct {
-	Kind    string          `json:"kind"`
-	Status  string          `json:"status"`
-	Command json.RawMessage `json:"command"`
+	Kind         string `json:"kind"`
+	Status       string `json:"status"`
+	AffectedRows int    `json:"affected_rows"`
+	Query        *struct {
+		Columns []catalog.Column `json:"columns"`
+		Rows    [][]jsonValue    `json:"rows"`
+	} `json:"query"`
 }
 
 func TestSQLSession(t *testing.T) {
@@ -63,36 +72,28 @@ SELECT id, name FROM Users; SELECT * FROM users;
 	if results[0].Status != "created-in-memory" {
 		t.Fatalf("CREATE did not report registration: %+v", results[0])
 	}
-	for _, result := range results[1:] {
-		if result.Status != "validated-only" {
-			t.Fatalf("row operation claimed execution: %+v", result)
+	if results[1].Status != "inserted" || results[1].AffectedRows != 1 || results[1].Query != nil {
+		t.Fatalf("INSERT did not execute: %+v", results[1])
+	}
+	for _, r := range results[2:] {
+		if r.Status != "selected" || r.Query == nil || len(r.Query.Rows) != 1 {
+			t.Fatalf("SELECT did not return a row: %+v", r)
 		}
 	}
-	var inserted struct {
-		Row []struct {
-			Type  string          `json:"type"`
-			Value json.RawMessage `json:"value"`
-		} `json:"prepared_row"`
+	selected := results[2].Query
+	if len(selected.Columns) != 2 || selected.Columns[1].Name != "name" || len(selected.Rows[0]) != 2 {
+		t.Fatalf("unexpected projection: %+v", selected)
 	}
-	if err := json.Unmarshal(results[1].Command, &inserted); err != nil {
-		t.Fatal(err)
-	}
+	row := selected.Rows[0]
 	var name string
-	if err := json.Unmarshal(inserted.Row[1].Value, &name); err != nil {
+	if err := json.Unmarshal(row[1].Value, &name); err != nil {
 		t.Fatal(err)
 	}
-	if string(inserted.Row[0].Value) != "9223372036854775807" || name != "O'Brien; नमस्ते" {
-		t.Fatalf("typed contents changed: %+v", inserted.Row)
+	if string(row[0].Value) != "9223372036854775807" || row[0].Type != "INTEGER" || name != "O'Brien; नमस्ते" {
+		t.Fatalf("typed contents changed: %+v", row)
 	}
-	var selected struct {
-		Columns   []catalog.Column `json:"columns"`
-		Positions []int            `json:"positions"`
-	}
-	if err := json.Unmarshal(results[2].Command, &selected); err != nil {
-		t.Fatal(err)
-	}
-	if len(selected.Columns) != 2 || selected.Columns[1].Name != "name" || selected.Positions[1] != 1 {
-		t.Fatalf("unexpected bound projection: %+v", selected)
+	if len(results[3].Query.Columns) != 3 || string(results[3].Query.Rows[0][2].Value) != "true" {
+		t.Fatalf("wildcard lost a value: %+v", results[3].Query)
 	}
 }
 
@@ -104,7 +105,7 @@ func TestRecoveryAfterRejectedStatement(t *testing.T) {
 	}
 	text := output.String()
 	if strings.Count(text, "error:") != 3 || strings.Count(text, `"kind": "select"`) != 1 {
-		t.Fatalf("expected three errors followed by one AST, got:\n%s", text)
+		t.Fatalf("expected three errors followed by one query result, got:\n%s", text)
 	}
 	if !strings.Contains(text, "line 1, column 9") || !strings.Contains(text, "unexpected character") {
 		t.Fatalf("missing positioned diagnostics: %s", text)
@@ -221,16 +222,16 @@ INSERT INTO t (a) VALUES ('wrong');
 SELECT missing FROM t;
 CREATE TABLE t (other BOOLEAN);
 INSERT INTO t (name, a) VALUES ('Amit', 42);
-SELECT a FROM t;`
+SELECT * FROM t;`
 	if err := shell.Run(strings.NewReader(input), &output, false); err != nil {
 		t.Fatal(err)
 	}
 	text := output.String()
-	if strings.Count(text, "semantic error:") != 4 || strings.Count(text, "created-in-memory") != 1 || strings.Count(text, "validated-only") != 2 {
+	if strings.Count(text, "semantic error:") != 4 || strings.Count(text, "created-in-memory") != 1 || strings.Count(text, `"status": "inserted"`) != 1 || strings.Count(text, `"status": "selected"`) != 1 {
 		t.Fatalf("unexpected semantic recovery: %s", text)
 	}
-	if !strings.Contains(text, `"value": null`) || strings.Contains(text, `"rows"`) {
-		t.Fatalf("missing NULL or fabricated row output: %s", text)
+	if !strings.Contains(text, `"value": null`) || !strings.Contains(text, `"rows"`) {
+		t.Fatalf("missing NULL or query rows: %s", text)
 	}
 	output.Reset()
 	if err := shell.Run(strings.NewReader("SELECT a FROM t;"), &output, false); err != nil {
